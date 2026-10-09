@@ -1636,12 +1636,12 @@ def inspect_content_import_source_at(
     ):
         if _paths_overlap(canonical, protected, is_directory):
             raise ContentOperationError(
-                f"Content import source overlaps the Huroshiki {label}: {canonical}"
+                f"Content import source overlaps the MATOI {label}: {canonical}"
             )
     repository = repository_root.resolve()
     if canonical == repository or (is_directory and canonical in repository.parents):
         raise ContentOperationError(
-            f"Content import source dangerously contains the Huroshiki repository: {canonical}"
+            f"Content import source dangerously contains the MATOI repository: {canonical}"
         )
     try:
         scan = scan_import_source(canonical, checkpoint=checkpoint)
@@ -1808,14 +1808,14 @@ def plan_content_import_at(
     ):
         if _paths_overlap(canonical_source, protected, snapshot.source_kind == "directory"):
             raise ContentOperationError(
-                f"Content import source overlaps the Huroshiki {label}: {canonical_source}"
+                f"Content import source overlaps the MATOI {label}: {canonical_source}"
             )
     repository = repository_root.resolve()
     if canonical_source == repository or (
         snapshot.source_kind == "directory" and canonical_source in repository.parents
     ):
         raise ContentOperationError(
-            f"Content import source dangerously contains the Huroshiki repository: {canonical_source}"
+            f"Content import source dangerously contains the MATOI repository: {canonical_source}"
         )
 
     plan = plan_content_changes_at(

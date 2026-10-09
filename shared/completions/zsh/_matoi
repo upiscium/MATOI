@@ -1,0 +1,5 @@
+#compdef matoi
+
+# MATOI and huroshiki operate on the same Packwiz projects.
+autoload -Uz +X _huroshiki
+_huroshiki "$@"

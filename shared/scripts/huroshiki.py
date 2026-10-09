@@ -14,8 +14,10 @@ from huroshiki_version import VERSION
 
 
 def argument_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
+    command_name = "matoi" if Path(sys.argv[0]).stem == "matoi" else "huroshiki"
     parser = argparse.ArgumentParser(
-        description="Packwiz project TUI",
+        prog=command_name,
+        description="MATOI Packwiz project TUI",
         add_help=add_help,
     )
     parser.add_argument(
@@ -26,7 +28,7 @@ def argument_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"huroshiki {VERSION}",
+        version=f"{command_name} {VERSION}",
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
@@ -56,7 +58,7 @@ try:
 except ModuleNotFoundError as error:
     if error.name == "textual":
         print(
-            "huroshiki requires Textual. Enter the Nix development shell "
+            "MATOI requires Textual. Enter the Nix development shell "
             "with `direnv allow` or `nix develop`."
         )
         raise SystemExit(1) from error
@@ -1074,7 +1076,7 @@ class PackCopyMigrationScreen(Screen[None]):
 
 
 class HuroshikiApp(App[None]):
-    TITLE = "huroshiki"
+    TITLE = "MATOI"
     CSS_PATH = "huroshiki.tcss"
     ENABLE_COMMAND_PALETTE = False
 
@@ -2303,7 +2305,7 @@ class NewTemplateModal(ModalScreen[dict[str, str] | None]):
 
 
 class BaseScreen(Screen[None]):
-    screen_title = "huroshiki"
+    screen_title = "MATOI"
     help_text = ""
 
     def compose_header(self) -> ComposeResult:
@@ -2378,7 +2380,7 @@ class ProjectChildScreen:
 
 class MainMenuScreen(FilterListScreen):
     BINDINGS = FilterListScreen.BINDINGS
-    screen_title = "huroshiki / Projects"
+    screen_title = "MATOI / Projects"
     help_text = (
         "Tab: focus  Enter: search/open  j/k: move  p: project  "
         "n: new  f: from template  d: delete  r: reload  x: state  "
@@ -2601,7 +2603,7 @@ class MainMenuScreen(FilterListScreen):
 
 
 class StateScreen(BaseScreen):
-    screen_title = "huroshiki / State and Trash"
+    screen_title = "MATOI / State and Trash"
     help_text = (
         "j/k: move  Enter: restore  p: purge  c: dry-run cleanup  "
         "x: apply cleanup  q: main"
@@ -4602,7 +4604,7 @@ class ContentScreen(ProjectChildScreen, FilterListScreen):
         if entry.kind == "invalid" or entry.errors:
             self.app.notify(
                 "Invalid entries cannot be modified from the Content TUI. "
-                "Repair or remove the entry outside Huroshiki, then reload.",
+                "Repair or remove the entry outside MATOI, then reload.",
                 severity="warning",
             )
             return
@@ -5363,7 +5365,7 @@ class TemplateScreen(ProjectChildScreen, FilterListScreen):
                 [
                     f"Target: {template.target}",
                     f"Path: {template.relative_path}",
-                    "This operation cannot be undone by huroshiki.",
+                    "This operation cannot be undone by MATOI.",
                 ],
             ),
             lambda confirmed: self.delete_confirmed(template, confirmed),

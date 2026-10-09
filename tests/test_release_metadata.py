@@ -334,25 +334,19 @@ class ReleaseMetadataTest(unittest.TestCase):
             readme_words,
             rf"current main/source version is `{re.escape(CURRENT_SOURCE_VERSION)}`",
         )
-        self.assertIn(PUBLISHED_STABLE_TAG, readme_words)
+        # The latest GitHub release is v0.3.1; historical v0.3.0 metadata above is frozen.
+        self.assertIn("latest published stable release is `v0.3.1`", readme_words)
         self.assertRegex(
-            readme_words,
-            rf"latest published stable release is `{re.escape(PUBLISHED_STABLE_TAG)}`",
+            readme,
+            r"github:upiscium/MATOI/v0\.3\.1(?:[\s`)]|$)",
         )
-        stable_release_reference = (
-            r"github:upiscium/Huroshiki/v0\.3\.0(?:[\s`)]|$)"
+        self.assertNotRegex(
+            readme,
+            r"github:upiscium/MATOI/v0\.3\.2(?:[\s`)]|$)",
         )
-        self.assertRegex(readme, stable_release_reference)
+        self.assertIn("formerly", readme_words.lower())
+        self.assertIn("Huroshiki", readme_words)
         self.assertNotIn("latest published prerelease remains", readme_words)
-        self.assertNotIn(
-            "the `v0.3.0` tag and GitHub Release have not yet been published",
-            readme_words,
-        )
-        future_release_reference = (
-            r"github:upiscium/Huroshiki/v0\.3\.1(?:[\s`)]|$)"
-        )
-        self.assertNotRegex(readme, future_release_reference)
-        self.assertNotIn("latest published stable release is `v0.3.1`", readme_words)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ class ShellEnvironmentTest(unittest.TestCase):
 
         self.assertNotIn("FPATH", shell_hook)
         self.assertIn(
-            'cp completions/zsh/_packctl completions/zsh/_huroshiki "$out/share/zsh/site-functions/"',
+            'cp completions/zsh/_packctl completions/zsh/_huroshiki completions/zsh/_matoi "$out/share/zsh/site-functions/"',
             flake,
         )
         runtime_inputs = flake.split("runtimeInputs =", 1)[1].split("];", 1)[0]
@@ -29,6 +29,7 @@ class ShellEnvironmentTest(unittest.TestCase):
         root = ROOT / "shared" / "completions" / "zsh"
         self.assertTrue((root / "_packctl").is_file())
         self.assertTrue((root / "_huroshiki").is_file())
+        self.assertTrue((root / "_matoi").is_file())
         self.assertFalse((root / "_just").exists())
         packctl_completion = (root / "_packctl").read_text(encoding="utf-8")
         self.assertNotIn("migrate-template", packctl_completion)

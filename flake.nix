@@ -1,5 +1,5 @@
 {
-  description = "Multi-pack Packwiz management application";
+  description = "MATOI (纏) — multi-pack Packwiz manager";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -31,7 +31,7 @@
             openssh
           ];
           huroshiki = pkgs.stdenvNoCC.mkDerivation {
-            pname = "huroshiki";
+            pname = "matoi";
             inherit version;
             src = ./shared;
             nativeBuildInputs = [ pkgs.makeWrapper ];
@@ -43,9 +43,14 @@
               cp scripts/*.py scripts/*.tcss scripts/VERSION scripts/huroshiki-launcher.sh "$out/lib/huroshiki/"
               chmod 0755 "$out/lib/huroshiki/huroshiki-launcher.sh"
               cp profiles.yaml "$out/share/huroshiki/profiles.yaml"
-              cp completions/zsh/_packctl completions/zsh/_huroshiki "$out/share/zsh/site-functions/"
+              cp completions/zsh/_packctl completions/zsh/_huroshiki completions/zsh/_matoi "$out/share/zsh/site-functions/"
               makeWrapper ${python}/bin/python "$out/bin/huroshiki" \
                 --add-flags "$out/lib/huroshiki/huroshiki.py" \
+                --set HUROSHIKI_DATA_DIR "$out/share/huroshiki" \
+                --set HUROSHIKI_PACKWIZ_INSTALLER_JAR ${packwizInstaller} \
+                --prefix PATH : ${pkgs.lib.makeBinPath runtimeInputs}
+              makeWrapper ${python}/bin/python "$out/bin/matoi" \
+                --add-flags "$out/lib/huroshiki/matoi.py" \
                 --set HUROSHIKI_DATA_DIR "$out/share/huroshiki" \
                 --set HUROSHIKI_PACKWIZ_INSTALLER_JAR ${packwizInstaller} \
                 --prefix PATH : ${pkgs.lib.makeBinPath runtimeInputs}
@@ -61,10 +66,13 @@
             root="$TMPDIR/external-root"
             mkdir -p "$root/packs/example" "$root/templates"
             printf 'id: example\n' > "$root/packs/example/pack.yaml"
+            test "$(${huroshiki}/bin/matoi --version)" = "matoi ${version}"
             test "$(${huroshiki}/bin/huroshiki --version)" = "huroshiki ${version}"
             test "$(${huroshiki}/bin/packctl --version)" = "packctl ${version}"
+            test "$(${huroshiki}/bin/matoi --root "$root" --version)" = "matoi ${version}"
             test "$(${huroshiki}/bin/huroshiki --root "$root" --version)" = "huroshiki ${version}"
             test "$(${huroshiki}/bin/packctl --root "$root" --version)" = "packctl ${version}"
+            ${huroshiki}/bin/matoi --root "$root" --help > /dev/null
             ${huroshiki}/bin/huroshiki --root "$root" --help > /dev/null
             ${huroshiki}/bin/packctl --root "$root" --help > /dev/null
             ! ${huroshiki}/bin/packctl --root "$root" --help | grep -E 'migrate-template|[,{](use|current)[,}]'
@@ -75,6 +83,7 @@
             test -f ${huroshiki}/lib/huroshiki/huroshiki.tcss
             test -f ${huroshiki}/lib/huroshiki/VERSION
             test -f ${huroshiki}/lib/huroshiki/huroshiki.py
+            test -f ${huroshiki}/lib/huroshiki/matoi.py
             test -f ${huroshiki}/lib/huroshiki/huroshiki_core.py
             test -f ${huroshiki}/lib/huroshiki/packctl.py
             test -f ${huroshiki}/lib/huroshiki/packwiz_pty.py
@@ -114,6 +123,7 @@
             test -f ${huroshiki}/share/huroshiki/profiles.yaml
             test -f ${huroshiki}/share/zsh/site-functions/_packctl
             test -f ${huroshiki}/share/zsh/site-functions/_huroshiki
+            test -f ${huroshiki}/share/zsh/site-functions/_matoi
             grep -q "loader-version" ${huroshiki}/share/zsh/site-functions/_packctl
             grep -q "apply-template" ${huroshiki}/share/zsh/site-functions/_packctl
             grep -q "template:template operations" ${huroshiki}/share/zsh/site-functions/_packctl
@@ -147,10 +157,16 @@
     {
       packages = forAllSystems (system: {
         huroshiki = (perSystem system).huroshiki;
+        matoi = (perSystem system).huroshiki;
         default = (perSystem system).huroshiki;
       });
 
       apps = forAllSystems (system: {
+        matoi = {
+          type = "app";
+          program = "${(perSystem system).huroshiki}/bin/matoi";
+          meta.description = "MATOI modpack manager";
+        };
         huroshiki = {
           type = "app";
           program = "${(perSystem system).huroshiki}/bin/huroshiki";
@@ -158,8 +174,8 @@
         };
         default = {
           type = "app";
-          program = "${(perSystem system).huroshiki}/bin/huroshiki";
-          meta.description = "Manage multiple Packwiz projects";
+          program = "${(perSystem system).huroshiki}/bin/matoi";
+          meta.description = "MATOI modpack manager";
         };
       });
 
@@ -189,10 +205,10 @@
 
             shellHook = ''
               export HUROSHIKI_PACKWIZ_INSTALLER_JAR=${packwizInstaller}
-              echo "Minecraft modpack monorepo"
+              echo "MATOI modpack manager"
               echo "  packwiz: $(packwiz --version 2>/dev/null || echo available)"
               echo "  java:    $(java -version 2>&1 | head -n 1)"
-              echo "  TUI:     huroshiki"
+              echo "  TUI:     matoi (huroshiki alias retained)"
               echo "  dev tasks: just --list"
               echo "  zsh completion: installed in share/zsh/site-functions"
             '';

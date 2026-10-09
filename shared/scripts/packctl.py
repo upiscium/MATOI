@@ -2288,7 +2288,7 @@ def _packwiz_process_log_text(
     )
     return "\n".join(
         (
-            "Huroshiki Packwiz Process Log",
+            "MATOI Packwiz Process Log",
             f"operation: {operation}",
             f"project: {project}",
             f"command_argv: {json.dumps(_redacted_packwiz_command(command), ensure_ascii=False)}",
