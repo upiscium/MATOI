@@ -1,5 +1,11 @@
 # Repository Notes
 
+## Brand and Compatibility
+
+- Official user-facing project name: **MATOI（纏）** (formerly Huroshiki). The primary interactive binary and Nix flake attr are `matoi`; `huroshiki` and `packctl` must remain fully compatible.
+- Intentionally **do not rename** the legacy Python modules, `HUROSHIKI_ROOT`, `HUROSHIKI_DATA_DIR`, `.huroshiki/` state, or `.huroshiki-*.json` / `[huroshiki]` persisted metadata during a branding-only change. They are data compatibility boundaries, not display branding.
+- Preserve historical release/changelog evidence exactly; changes to storage/metadata identities require a dedicated versioned migration with regression and rollback tests.
+
 ## Environment and Checks
 
 - Enter the pinned toolchain with `direnv allow` or `nix develop`; the shell adds Just and actionlint for development. The packaged runtime supplies Python with Textual/PyYAML/tomlkit, Packwiz, Java 21, rsync, and SSH, but deliberately excludes Just.

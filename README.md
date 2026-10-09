@@ -1,11 +1,15 @@
-# Huroshiki
+# MATOI（纏）
 
-Huroshiki manages multiple Packwiz modpacks and reusable MOD-list templates in one repository.
+**MATOI** (formerly **Huroshiki**) brings multiple Packwiz modpacks and reusable
+MOD-list templates into one coherent management workflow. Its name, 纏 (matoi),
+reflects wrapping and unifying different elements.
+
 The public interfaces are:
 
-- `huroshiki` for interactive project management
-- `packctl` for noninteractive commands and automation
-- `just` only for repository development tasks
+- `matoi` for interactive project management (preferred)
+- `huroshiki` as the backwards-compatible interactive command
+- `packctl` for noninteractive commands and automation (unchanged)
+- `just` for repository development tasks only
 
 Every noninteractive project-specific operation takes an explicit pack or template ID. Collection
 commands such as `list` and `validate` do not select a project, and there is no `MODPACK` shell
@@ -13,37 +17,44 @@ context.
 
 ## Installation
 
-Run or install the Nix flake package:
+Run or install MATOI using its Nix flake:
 
 ```bash
-nix run github:upiscium/Huroshiki -- --help
-nix profile install github:upiscium/Huroshiki#huroshiki
-huroshiki --help
+nix run github:upiscium/MATOI -- --help
+nix profile install github:upiscium/MATOI#matoi
+matoi --help
 packctl --help
-huroshiki --version
+matoi --version
+huroshiki --version  # legacy compatibility
 packctl --version
 ```
 
-The current main/source version is `0.3.1-dev`. The latest published stable release is `v0.3.0`,
-which can be run with:
+The current main/source version is `0.3.1-dev`. The latest published stable release is `v0.3.1`
+(released under the former Huroshiki name), which can be run with:
 
 ```bash
-nix run github:upiscium/Huroshiki/v0.3.0 -- --help
+nix run github:upiscium/MATOI/v0.3.1 -- --help
 ```
 
-The managed repository is selected by `--root PATH`, then `HUROSHIKI_ROOT`, then the current
-working directory. `huroshiki` accepts `--root` before or after `--pack`/`--template`; `packctl`
-requires global options before its subcommand. The installed program location is never used as the
-managed data root.
+The managed repository is selected by `--root PATH`, then the existing `HUROSHIKI_ROOT`
+environment variable, then the current working directory. Both `matoi` and `huroshiki`
+accept `--root` before or after `--pack`/`--template`; `packctl` requires global options
+before its subcommand. The installed program location is never used as the data root.
 
 ```bash
-huroshiki --root /srv/modpacks
+matoi --root /srv/modpacks
 HUROSHIKI_ROOT=/srv/modpacks packctl validate
 packctl --root /srv/modpacks list
 ```
 
-For repository development, enter the pinned shell with `direnv allow` or `nix develop`. Just is
-available there for `just test-huroshiki` and `just check`; it is not in the package runtime closure.
+**Compatibility:** Existing `huroshiki` invocations, `packctl` scripts, Nix's
+`#huroshiki` attribute, `HUROSHIKI_ROOT`, the `.huroshiki/` transaction directory,
+and stored `.huroshiki-*.json` metadata remain unchanged. Do not rename these files or
+directories in existing packs; MATOI reads the original on-disk formats.
+
+For repository development, enter the pinned shell with `direnv allow` or `nix develop`.
+Just is available there for `just test-matoi` (or the legacy `just test-huroshiki`)
+and `just check`; it is not in the package runtime closure.
 
 ## Repository Layout
 
@@ -62,6 +73,7 @@ available there for `just test-huroshiki` and `just check`; it is not in the pac
     ├── profiles.yaml
     ├── completions/zsh/_packctl
     ├── completions/zsh/_huroshiki
+    ├── completions/zsh/_matoi
     └── scripts/
 ```
 
@@ -82,9 +94,9 @@ Packwiz, including dangling, internal, absolute, and escaping links.
 Open the project browser or one project directly:
 
 ```bash
-huroshiki
-huroshiki --pack the-fungal-infection
-huroshiki --template delight-base
+matoi
+matoi --pack the-fungal-infection
+matoi --template delight-base
 ```
 
 The TUI creates packs and templates, composes multiple templates, installs and removes MODs, edits
@@ -100,8 +112,8 @@ use canonical provider/project identity, preserve existing locations, union side
 version/download/update disagreements plus portable metadata-path or JAR-filename collisions. URL
 roots continue to use bounded downloads and do not acquire an implicit Packwiz dependency closure.
 Modrinth IDs, slugs, and project URLs are resolved through the Modrinth API before Packwiz runs.
-CurseForge uses Packwiz-native interactive search in the TUI; Huroshiki does not directly search the
-CurseForge API, and a CurseForge API key is unnecessary. Results display labels only; Huroshiki
+CurseForge uses Packwiz-native interactive search in the TUI; MATOI does not directly search the
+CurseForge API, and a CurseForge API key is unnecessary. Results display labels only; MATOI
 verifies the selected root's positive numeric project ID with an isolated root-only probe, then
 resolves and merges its canonical complete dependency closure. `provider_lookup.py` is Modrinth-only.
 Noninteractive CLI, profile, and template
@@ -112,7 +124,7 @@ Packwiz and provider resolver work use isolated process groups, so the same canc
 deadline, and orphan-process checks bound their work. Packwiz menu labels are never interpreted as
 identities.
 When Modrinth and CurseForge resolve the same transitive dependency to a colliding metadata path or
-JAR filename, Huroshiki collapses it only after verified identity equivalence. Equal declared SHA-256 is
+JAR filename, MATOI collapses it only after verified identity equivalence. Equal declared SHA-256 is
 accepted directly; otherwise the pinned Packwiz Installer materializes both artifacts in isolated
 transaction state, verifies each declared hash, and requires equal computed SHA-256 or the same
 complete target-loader MOD ID/version set. Names, slugs, and filenames alone are never evidence. Explicit
@@ -124,7 +136,7 @@ Noninteractive Modrinth and CurseForge closure resolvers run in isolated process
 or their monotonic deadline stops the whole group with SIGTERM and then SIGKILL after a bounded grace
 period. URL roots keep their existing interruptible download cancellation and network timeouts; the
 Packwiz resolver deadline does not replace the URL download timeout.
-After a resolver parent exits, Huroshiki also checks the Linux process table for live members of its
+After a resolver parent exits, MATOI also checks the Linux process table for live members of its
 process group. Background descendants are terminated and make the resolver result fail closed;
 zombie-only groups are not treated as running work. Termination, forced killing, and parent reaping
 each have bounded waits; an undrained group or unreaped parent is reported as an integrity failure.
@@ -396,7 +408,7 @@ Linux `renameat2` compare-and-swap. The directory identities are rechecked befor
 publication so a renamed or replaced project path fails closed. They do
 not follow configuration symlinks or reopen a snapshotted file by path. A new local file is mode
 `0600`; an existing file keeps its mode. Unsupported atomic rename semantics fail closed. If an
-exchange detects an external writer at the canonical path, Huroshiki leaves it canonical and reports
+exchange detects an external writer at the canonical path, MATOI leaves it canonical and reports
 separate original and staged recovery filenames.
 
 `packctl show-url-policy <kind> <project>` reports effective values rather than `None`, including
@@ -490,14 +502,14 @@ dots/spaces, and Unicode/case-folded collisions are rejected.
 
 ## Zsh Completion
 
-The package installs `_packctl` and `_huroshiki` in `share/zsh/site-functions`. They provide dynamic
-pack, template, profile, metadata-path, and installed-MOD choices where applicable. Huroshiki does
+The package installs `_packctl`, `_matoi`, and the legacy `_huroshiki` in `share/zsh/site-functions`. They provide dynamic
+pack, template, profile, metadata-path, and installed-MOD choices where applicable. MATOI does
 not install `_just` and does not override the user's generic Just completion.
 
 For a manually built package:
 
 ```zsh
-package="$(nix build --no-link --print-out-paths .#huroshiki)"
+package="$(nix build --no-link --print-out-paths .#matoi)"
 fpath=("$package/share/zsh/site-functions" $fpath)
 autoload -Uz compinit && compinit
 ```
@@ -540,12 +552,12 @@ All former user-facing recipes were removed immediately. Use these replacements:
 ## Development Checks
 
 ```bash
-just test-huroshiki
+just test-matoi
 just check
 actionlint
 nix flake check
 nix build .
-nix build .#huroshiki
+nix build .#matoi
 ```
 
 `nix flake check` includes the complete Python unit suite as a sandboxed derivation. GitHub pull

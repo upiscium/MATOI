@@ -1140,7 +1140,7 @@ class PublicCliTest(unittest.TestCase):
             if line and not line.startswith((" ", "#", "set ")) and line.endswith(":")
         ]
 
-        self.assertEqual(recipes, ["default", "test-huroshiki", "check"])
+        self.assertEqual(recipes, ["default", "test-matoi", "test-huroshiki", "check"])
         self.assertNotIn("MODPACK", justfile)
 
 
