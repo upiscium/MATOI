@@ -239,10 +239,26 @@ class AddTransactionTest(unittest.TestCase):
         applied: list[core.PackTransaction] = []
         original_apply = core.PackTransaction.apply
 
+        commands: list[tuple[str, ...]] = []
+
         def run(command, *, cwd, **_):
             self.assertEqual(self.snapshot(), original)
-            if "add" in command and command[-1] == MODRINTH_IDS["example"]:
+            commands.append(tuple(command))
+            if (
+                "add" in command
+                and "--project-id" in command
+                and command[command.index("--project-id") + 1]
+                == MODRINTH_IDS["example"]
+            ):
                 self.install_files(cwd, MODRINTH_IDS["example"])
+                if "--version-id" in command:
+                    root = cwd / "mods/root.pw.toml"
+                    root.write_text(
+                        root.read_text(encoding="utf-8").replace(
+                            'version = "v1"', 'version = "Exact001"'
+                        ),
+                        encoding="utf-8",
+                    )
             elif command == ["packwiz", "refresh"]:
                 (cwd / "index.toml").write_bytes(b"refreshed index\n")
             return self.completed(command)
@@ -280,6 +296,73 @@ class AddTransactionTest(unittest.TestCase):
         self.assertIs(prepared[0][0], applied[0])
         self.assertEqual(prepared[0][1].identity_label, "modrinth:Examp001")
         self.assertEqual(prepared[0][1].artifact_id, "Exact001")
+        self.assertIn(
+            (
+                "packwiz",
+                "--yes",
+                "modrinth",
+                "add",
+                "--project-id",
+                MODRINTH_IDS["example"],
+                "--version-id",
+                "Exact001",
+            ),
+            commands,
+        )
+        self.assert_unlocked()
+
+    def test_exact_readd_of_installed_dependency_promotes_before_resolver_merge(self) -> None:
+        (self.source / "mods/root.pw.toml").write_text(
+            metadata("Root", MODRINTH_IDS["root"]),
+            encoding="utf-8",
+        )
+        dependency = metadata("Dependency", MODRINTH_IDS["dependency"]).replace(
+            'version = "v1"', 'version = "Exact001"'
+        )
+        (self.source / "mods/dependency.pw.toml").write_text(
+            dependency,
+            encoding="utf-8",
+        )
+        (self.source / ".packwizignore").write_text(
+            "/.huroshiki-roots.json\n/.huroshiki-version-overrides.json\n",
+            encoding="utf-8",
+        )
+        core.write_pack_root_manifest(
+            self.source,
+            (core.PackRootRecord("modrinth", MODRINTH_IDS["root"], "both"),),
+        )
+
+        with patch.object(core, "resolve_mod_closure") as automatic, patch.object(
+            core, "resolve_exact_mod_closure"
+        ) as exact, patch.object(
+            core.PackTransaction, "prepare_exact_mod_version", autospec=True
+        ) as prepare:
+            result = core.add_mod_transactionally(
+                self.key,
+                "modrinth",
+                "dependency",
+                "client",
+                artifact_id="Exact001",
+            )
+
+        self.assertEqual(result, 0)
+        automatic.assert_not_called()
+        exact.assert_not_called()
+        prepare.assert_not_called()
+        roots = core.read_pack_root_manifest(self.source)
+        self.assertEqual(
+            {(root.canonical_identity, root.side) for root in roots},
+            {
+                (f'modrinth:{MODRINTH_IDS["root"]}', "both"),
+                (f'modrinth:{MODRINTH_IDS["dependency"]}', "client"),
+            },
+        )
+        override = core.get_mod_version_override(
+            self.source, f'modrinth:{MODRINTH_IDS["dependency"]}'
+        )
+        self.assertIsNotNone(override)
+        assert override is not None
+        self.assertEqual(override.artifact_id, "Exact001")
         self.assert_unlocked()
 
     def test_add_and_refresh_failures_leave_real_tree_unchanged(self) -> None:
