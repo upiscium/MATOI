@@ -3297,6 +3297,37 @@ class PackTransaction:
             )
         ensure_safe_pack_source(self.source)
 
+        exact_selection: ExactModArtifactSelection | None = None
+        exact_cancel = threading.Event()
+        exact_deadline = time.monotonic() + UPDATE_OPERATION_TIMEOUT_SECONDS
+        if artifact_id is not None:
+            resolved_selector = resolve_project_selector(
+                provider,
+                selector,
+                cancel_event=exact_cancel,
+                deadline=exact_deadline,
+                process_result_callback=self._record_equivalence_process_result,
+            )
+            project_identity = resolved_selector.canonical_project_id
+            if project_identity is None:
+                raise HuroshikiError(
+                    f"Canonical project ID is unavailable for {provider}:{selector}"
+                )
+            artifact_identity: str | CanonicalModrinthId = artifact_id
+            if provider == "modrinth":
+                if type(project_identity) is not CanonicalModrinthId:
+                    project_identity = canonical_modrinth_id(
+                        str(project_identity), "Modrinth project ID"
+                    )
+                artifact_identity = canonical_modrinth_id(
+                    artifact_id, "Modrinth version ID"
+                )
+            exact_selection = ExactModArtifactSelection(
+                provider,
+                project_identity,
+                artifact_identity,
+            )
+
         if provider == "url":
             client, server = flags_from_side(normalized_side)
             result = self.begin_add(
@@ -3311,17 +3342,131 @@ class PackTransaction:
                 return result.returncode or 1
         else:
             self._ensure_empty_pack_root_manifest()
+
+            if exact_selection is not None:
+                installed = _exact_metadata_records(self.source).get(
+                    exact_selection.identity, ()
+                )
+                if len(installed) > 1:
+                    raise HuroshikiError(
+                        f"Exact Add target has duplicate identity: "
+                        f"{exact_selection.identity_label}"
+                    )
+                if installed:
+                    relative, contents, installed_mod = installed[0]
+                    installed_identity = parse_provider_metadata(relative, contents)
+                    installed_artifact_id = installed_identity.file_id
+                    requested_artifact_id = str(exact_selection.artifact_id)
+                    requested_side_is_covered = (
+                        union_side(installed_mod.side, normalized_side)
+                        == installed_mod.side
+                    )
+                    if (
+                        installed_artifact_id == requested_artifact_id
+                        and requested_side_is_covered
+                    ):
+                        manifest = self.source / ".huroshiki-roots.json"
+                        if not manifest.is_file() or manifest.is_symlink():
+                            raise HuroshikiError(
+                                "Exact Add provenance promotion requires "
+                                "authoritative root provenance"
+                            )
+                        existing_root = next(
+                            (
+                                root
+                                for root in read_pack_root_manifest(self.source)
+                                if root.canonical_identity
+                                == exact_selection.identity_label
+                            ),
+                            None,
+                        )
+                        root_side = (
+                            normalized_side
+                            if existing_root is None
+                            else union_side(existing_root.side, normalized_side)
+                        )
+                        existing_override = get_mod_version_override(
+                            self.source,
+                            exact_selection.identity_label,
+                        )
+                        selected_override = ModVersionOverride(
+                            exact_selection.provider,
+                            str(exact_selection.project_id),
+                            requested_artifact_id,
+                            (
+                                existing_override.locked
+                                if existing_override is not None
+                                else False
+                            ),
+                            (
+                                existing_override.reason
+                                if existing_override is not None
+                                else None
+                            ),
+                        )
+                        ensure_pack_root_manifest_ignored(self.source)
+                        ensure_mod_version_overrides_ignored(self.source)
+                        record_pack_root(
+                            self.source,
+                            exact_selection.provider,
+                            str(exact_selection.project_id),
+                            root_side,
+                        )
+                        set_mod_version_override(
+                            self.source,
+                            selected_override,
+                        )
+                        self._validated_version_overrides()
+                        self._version_override_mutated = True
+                        self._record_source_mutation(intent_only=True)
+                        self.apply(refresh=False)
+                        return 0
+
+                    self.prepare_exact_mod_version(
+                        exact_selection,
+                        promote_to_root_side=normalized_side,
+                    )
+                    self.apply()
+                    return 0
+
             minecraft, loader, loader_version = packctl.project_versions(self.source)
-            closure = resolve_mod_closure(
-                provider=provider,
-                selector=selector,
-                minecraft=minecraft,
-                loader=loader,
-                loader_version=loader_version,
-                resolver_root=self.root / f"resolver-{uuid4().hex}",
-                process_result_callback=self._record_equivalence_process_result,
-                diagnostic_project_id=self.project_key.partition(":")[2],
-            )
+            if exact_selection is None:
+                closure = resolve_mod_closure(
+                    provider=provider,
+                    selector=selector,
+                    minecraft=minecraft,
+                    loader=loader,
+                    loader_version=loader_version,
+                    resolver_root=self.root / f"resolver-{uuid4().hex}",
+                    process_result_callback=self._record_equivalence_process_result,
+                    diagnostic_project_id=self.project_key.partition(":")[2],
+                )
+            else:
+                resolver_source = self.root / f"resolver-{uuid4().hex}"
+                create_resolver_source(
+                    resolver_source,
+                    display_name=f"Resolve exact {exact_selection.identity_label}",
+                    minecraft=minecraft,
+                    loader=loader,
+                    loader_version=loader_version,
+                )
+
+                def checkpoint() -> None:
+                    if exact_cancel.is_set():
+                        raise HuroshikiError("Exact Add resolution was cancelled")
+                    if time.monotonic() >= exact_deadline:
+                        raise HuroshikiError("Exact Add resolution deadline exceeded")
+
+                closure = resolve_exact_mod_closure(
+                    exact_selection,
+                    source=resolver_source,
+                    cancel_event=exact_cancel,
+                    deadline=exact_deadline,
+                    checkpoint=checkpoint,
+                    process_result_callback=self._record_equivalence_process_result,
+                    diagnostic_project_id=self.project_key.partition(":")[2],
+                )
+
             overrides = self._validated_version_overrides()
             try:
                 changed = merge_metadata_closure(
@@ -3349,23 +3494,8 @@ class PackTransaction:
             )
             self._record_source_mutation()
 
-            if artifact_id is not None:
-                root_provider, root_project_id = closure.root_identity
-                selected_artifact_id = artifact_id
-                if root_provider == "modrinth":
-                    root_project_id = canonical_modrinth_id(
-                        root_project_id, "Modrinth project ID"
-                    )
-                    selected_artifact_id = canonical_modrinth_id(
-                        artifact_id, "Modrinth version ID"
-                    )
-                self.prepare_exact_mod_version(
-                    ExactModArtifactSelection(
-                        root_provider,
-                        root_project_id,
-                        selected_artifact_id,
-                    )
-                )
+            if exact_selection is not None:
+                self.prepare_exact_mod_version(exact_selection)
 
         self.apply()
         return 0
@@ -3899,6 +4029,7 @@ class PackTransaction:
         cancel_event: threading.Event | None = None,
         deadline: float | None = None,
         progress: Callable[[ModVersionSelectionProgress], None] | None = None,
+        promote_to_root_side: str | None = None,
     ) -> ModVersionSelectionPreview:
         operation_cancel = cancel_event or threading.Event()
         operation_deadline = (
@@ -3920,6 +4051,7 @@ class PackTransaction:
                 selection,
                 progress=progress,
                 operation_owner=operation,
+                promote_to_root_side=promote_to_root_side,
             )
         finally:
             with self._lock:
@@ -3934,12 +4066,19 @@ class PackTransaction:
         *,
         progress: Callable[[ModVersionSelectionProgress], None] | None,
         operation_owner: ExactModVersionOperation,
+        promote_to_root_side: str | None = None,
     ) -> ModVersionSelectionPreview:
         """Stage one exact provider artifact without publishing the real Pack."""
         if not isinstance(selection, ExactModArtifactSelection):
             raise HuroshikiError("Exact MOD artifact selection has an invalid type")
         operation_cancel = operation_owner.cancel_event
         operation_deadline = operation_owner.deadline
+        promotion_side: str | None = None
+        if promote_to_root_side is not None:
+            try:
+                promotion_side = packctl.normalize_side(promote_to_root_side)
+            except packctl.ConfigError as error:
+                raise HuroshikiError(str(error)) from error
 
         def checkpoint() -> None:
             with self._lock:
@@ -4516,6 +4655,105 @@ class PackTransaction:
                 raise HuroshikiError(
                     "Exact MOD staging did not preserve the selected root side"
                 )
+
+            if promotion_side is not None:
+                promotion_graph = _build_exact_dependency_graph(
+                    exact_verifications,
+                    {selection.identity},
+                    checkpoint,
+                )
+                promotion_identities = {
+                    identity
+                    for identity, owners in promotion_graph.root_reachability
+                    if selection.identity in owners
+                }
+                if selection.identity not in promotion_identities:
+                    raise HuroshikiError(
+                        f"Exact root promotion could not reach "
+                        f"{selection.identity_label}"
+                    )
+
+                for identity in sorted(promotion_identities):
+                    checkpoint()
+                    entries = final_records.get(identity, ())
+                    if len(entries) != 1:
+                        raise HuroshikiError(
+                            f"Exact root promotion metadata is not unique for "
+                            f"{identity[0]}:{identity[1]}"
+                        )
+                    relative, contents, mod = entries[0]
+                    promoted_side = union_side(mod.side, promotion_side)
+                    if promoted_side != mod.side:
+                        safe_child(self.source, relative).write_bytes(
+                            _metadata_contents_with_side(contents, promoted_side)
+                        )
+
+                existing_root_record = next(
+                    (
+                        root
+                        for root in read_pack_root_manifest(self.source)
+                        if root.canonical_identity == selection.identity_label
+                    ),
+                    None,
+                )
+                root_side = (
+                    promotion_side
+                    if existing_root_record is None
+                    else union_side(existing_root_record.side, promotion_side)
+                )
+                record_pack_root(
+                    self.source,
+                    selection.provider,
+                    str(selection.project_id),
+                    root_side,
+                )
+                _exact_run_refresh(
+                    self.source,
+                    cancel_event=operation_cancel,
+                    deadline=operation_deadline,
+                    checkpoint=checkpoint,
+                    process_result_callback=record_process_result,
+                    diagnostic_project_id=project_id,
+                    diagnostic_callback=record_diagnostic,
+                )
+                ensure_safe_pack_source(self.source, checkpoint=checkpoint)
+                if packctl.project_versions(self.source) != versions:
+                    raise HuroshikiError(
+                        "Exact root promotion changed the Minecraft or loader version"
+                    )
+                promoted_records = _exact_metadata_records(self.source, checkpoint)
+                if promoted_records.keys() != final_records.keys():
+                    raise HuroshikiError(
+                        "Exact root promotion changed the installed metadata graph"
+                    )
+                final_records = promoted_records
+                _exact_assert_root_manifest_identities(self.source, final_records)
+                final_root_records = final_records.get(selection.identity, ())
+                if len(final_root_records) != 1:
+                    raise HuroshikiError(
+                        f"Exact root promotion produced an invalid target identity: "
+                        f"{selection.identity_label}"
+                    )
+                final_relative, final_contents, final_mod = final_root_records[0]
+                _verify_exact_root_metadata(
+                    selection,
+                    (
+                        ResolvedMetadata(
+                            selection.identity,
+                            final_relative,
+                            final_mod.filename,
+                            final_contents,
+                            selection.provider,
+                            selection.project_id,
+                        ),
+                    ),
+                )
+                expected_promoted_side = union_side(selected_side, promotion_side)
+                if final_mod.side != expected_promoted_side:
+                    raise HuroshikiError(
+                        "Exact root promotion did not preserve requested side coverage"
+                    )
+
             final_after = _file_content_snapshot(self.source, checkpoint)
             added = tuple(
                 sorted(
@@ -4582,7 +4820,7 @@ class PackTransaction:
                     exact_verifications, final_records
                 ),
                 verifications=exact_verifications,
-                manifest=manifest_before,
+                manifest=_exact_manifest_bytes(self.source),
                 versions=versions,
                 metadata_identities=_exact_metadata_identity_snapshot(final_records),
                 reachability=_exact_reachability_snapshot(final_reachability),

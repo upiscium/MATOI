@@ -2061,6 +2061,77 @@ class ExactModVersionSelectionTest(unittest.TestCase):
         finally:
             transaction.discard()
 
+    def test_exact_dependency_can_be_promoted_to_root_without_dependency_update(self) -> None:
+        transaction = self.write_graph_pack(
+            (("root", "r1", "server"),),
+            (("dependency", "d1"),),
+        )
+        transaction.source.joinpath("mods/dependency.pw.toml").write_text(
+            self.metadata("modrinth", "dependency", "d1", side="server"),
+            encoding="utf-8",
+        )
+        closures = {
+            ("modrinth", "root", "r1"): self.graph_closure(
+                "root", "r1", ("dependency", "d1")
+            ),
+            ("modrinth", "dependency", "d1"): self.graph_closure(
+                "dependency", "d1"
+            ),
+        }
+        materialize = self.dependency_graph_materializer(
+            {
+                "root": (("dependency", ">=1.0"),),
+                "dependency": (),
+            },
+            {"r1": "1.0", "d1": "1.0"},
+        )
+
+        def resolve(selection, **_):
+            return closures[selection_fixture_key(selection)]
+
+        try:
+            with patch.object(
+                core, "resolve_exact_mod_closure", side_effect=resolve
+            ), patch.object(
+                core, "materialize_provider_artifact", side_effect=materialize
+            ):
+                transaction.prepare_exact_mod_version(
+                    self.selection(
+                        "modrinth",
+                        branded_project("dependency"),
+                        branded_version("d1"),
+                    ),
+                    promote_to_root_side="client",
+                )
+
+            roots = core.read_pack_root_manifest(transaction.source)
+            self.assertEqual(
+                [(root.canonical_identity, root.side) for root in roots],
+                [
+                    (f"modrinth:{mr_project('dependency')}", "client"),
+                    (f"modrinth:{mr_project('root')}", "server"),
+                ],
+            )
+            self.assertIn(
+                'side = "both"',
+                transaction.source.joinpath("mods/dependency.pw.toml").read_text(),
+            )
+            transaction.apply()
+            published_roots = core.read_pack_root_manifest(self.source)
+            self.assertEqual(
+                [(root.canonical_identity, root.side) for root in published_roots],
+                [
+                    (f"modrinth:{mr_project('dependency')}", "client"),
+                    (f"modrinth:{mr_project('root')}", "server"),
+                ],
+            )
+            self.assertIn(
+                'side = "both"',
+                self.source.joinpath("mods/dependency.pw.toml").read_text(),
+            )
+        finally:
+            transaction.discard()
+
     def test_root_selection_validates_resulting_dependency_constraint(self) -> None:
         def run(version: str, succeeds: bool) -> None:
             transaction = self.write_graph_pack(
